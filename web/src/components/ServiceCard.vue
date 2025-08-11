@@ -41,12 +41,12 @@
         <div class="stat-label">今日下载</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value">{{ service.inbound_count }}</div>
-        <div class="stat-label">入站端口</div>
+        <div class="stat-value">{{ formatBytes(service.monthly_upload) }}</div>
+        <div class="stat-label">30天上传</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value">{{ service.client_count }}</div>
-        <div class="stat-label">用户数量</div>
+        <div class="stat-value">{{ formatBytes(service.monthly_download) }}</div>
+        <div class="stat-label">30天下载</div>
       </div>
     </div>
 

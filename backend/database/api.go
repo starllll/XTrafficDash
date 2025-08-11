@@ -122,6 +122,22 @@ func (api *DatabaseAPI) GetServices(c *gin.Context) {
 			"upload_data":   uploadData,
 			"download_data": downloadData,
 		}
+
+		// 新增：计算月度总流量
+		var monthlyUp, monthlyDown int64
+		monthlyQuery := `
+			SELECT COALESCE(SUM(daily_up), 0), COALESCE(SUM(daily_down), 0)
+			FROM inbound_traffic_history
+			WHERE service_id = ? AND date >= DATE('now', '-30 days', 'localtime')
+		`
+		err = api.db.db.QueryRow(monthlyQuery, serviceID).Scan(&monthlyUp, &monthlyDown)
+		if err != nil {
+			// 如果查询出错，则将月度流量置为0，避免整个请求失败
+			monthlyUp = 0
+			monthlyDown = 0
+		}
+		service["monthly_upload"] = monthlyUp
+		service["monthly_download"] = monthlyDown
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -207,6 +223,21 @@ func (api *DatabaseAPI) GetServiceTraffic(c *gin.Context) {
 			"download_data": downloadData,
 		}
 	}
+
+	// 新增：计算月度总流量
+	var monthlyUp, monthlyDown int64
+	monthlyQuery := `
+		SELECT COALESCE(SUM(daily_up), 0), COALESCE(SUM(daily_down), 0)
+		FROM inbound_traffic_history
+		WHERE service_id = ? AND date >= DATE('now', '-30 days', 'localtime')
+	`
+	err = api.db.db.QueryRow(monthlyQuery, id).Scan(&monthlyUp, &monthlyDown)
+	if err != nil {
+		monthlyUp = 0
+		monthlyDown = 0
+	}
+	traffic["monthly_upload"] = monthlyUp
+	traffic["monthly_download"] = monthlyDown
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
