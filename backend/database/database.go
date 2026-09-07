@@ -630,6 +630,12 @@ func (d *Database) DeleteService(serviceID int) error {
 		return fmt.Errorf("删除入站流量记录失败: %v", err)
 	}
 
+	// 删除客户端流量历史记录
+	_, err = tx.Exec("DELETE FROM client_traffic_history WHERE service_id = ?", serviceID)
+	if err != nil {
+		return fmt.Errorf("删除客户端流量历史记录失败: %v", err)
+	}	
+
 	// 删除客户端流量记录
 	_, err = tx.Exec("DELETE FROM client_traffics WHERE service_id = ?", serviceID)
 	if err != nil {
