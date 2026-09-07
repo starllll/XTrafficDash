@@ -39,6 +39,14 @@ api.interceptors.response.use(
   }
 )
 
+const buildRangeQuery = (range = {}) => {
+  const params = new URLSearchParams()
+  if (range.startDate) params.set('start_date', range.startDate)
+  if (range.endDate) params.set('end_date', range.endDate)
+  if (range.days) params.set('days', String(range.days))
+  return params.toString()
+}
+
 export const servicesAPI = {
   // 获取服务列表
   getServices: () => api.get('/db/services'),
@@ -56,10 +64,16 @@ export const servicesAPI = {
   getMonthlyTraffic: (serviceId) => api.get(`/db/traffic/monthly/${serviceId}`),
   
   // 获取端口详情
-  getPortDetail: (serviceId, tag, days = 7) => api.get(`/db/port-detail/${serviceId}/${tag}?days=${days}`),
+  getPortDetail: (serviceId, tag, range = {}) => {
+    const query = buildRangeQuery(range)
+    return api.get(`/db/port-detail/${serviceId}/${tag}${query ? `?${query}` : ''}`)
+  },
   
   // 获取用户详情
-  getUserDetail: (serviceId, email, days = 7) => api.get(`/db/user-detail/${serviceId}/${email}?days=${days}`),
+  getUserDetail: (serviceId, email, range = {}) => {
+    const query = buildRangeQuery(range)
+    return api.get(`/db/user-detail/${serviceId}/${email}${query ? `?${query}` : ''}`)
+  },
   
   // 更新服务自定义名称
   updateServiceCustomName: (serviceId, customName) => api.put(`/db/services/${serviceId}/custom-name`, { custom_name: customName }),

@@ -11,6 +11,18 @@ export const formatDate = (dateString) => {
   return date.toLocaleDateString('zh-CN')
 }
 
+export const formatDateTime = (dateString) => {
+  if (!dateString) return ''
+  const date = new Date(dateString.includes(' ') ? dateString.replace(' ', 'T') : dateString)
+  if (Number.isNaN(date.getTime())) return dateString
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mm = String(date.getMinutes()).padStart(2, '0')
+  return `${y}-${m}-${d} ${hh}:${mm}`
+}
+
 // 智能时间格式化：根据时间差自动选择“刚刚”、“xx分钟前”、“xx小时前”、“xx天前”、“xx个月前”、“xx年前”或 yyyy-MM-dd HH:mm
 export function formatSmartTime(dateStr) {
   if (!dateStr) return ''

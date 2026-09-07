@@ -307,7 +307,6 @@ func (d *Database) processInboundTraffics(tx *sql.Tx, serviceID int, inboundTraf
 		if traffic.Up > 0 || traffic.Down > 0 {
 			activePorts = append(activePorts, fmt.Sprintf("端口%d(上传:%s,下载:%s)", port, d.formatBytes(traffic.Up), d.formatBytes(traffic.Down)))
 		}
-		// 获取或创建入站流量记录
 		var recordID int
 		err := tx.QueryRow(`SELECT id FROM inbound_traffics WHERE service_id = ? AND tag = ?`, serviceID, traffic.Tag).Scan(&recordID)
 		if err == sql.ErrNoRows {
@@ -321,19 +320,18 @@ func (d *Database) processInboundTraffics(tx *sql.Tx, serviceID int, inboundTraf
 		} else if err != nil {
 			return err
 		}
-		// upsert 到历史表，写入 date 用 localtime
 		if traffic.Up > 0 || traffic.Down > 0 {
+			hourBucket := time.Now().In(time.Local).Format("2006-01-02 15:00:00")
 			_, err := tx.Exec(`
 				INSERT INTO inbound_traffic_history (inbound_traffic_id, service_id, tag, date, daily_up, daily_down, created_at)
-				VALUES (?, ?, ?, DATE('now', 'localtime'), ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(inbound_traffic_id, date) DO UPDATE SET
 					daily_up = daily_up + excluded.daily_up,
 					daily_down = daily_down + excluded.daily_down
-			`, recordID, serviceID, traffic.Tag, traffic.Up, traffic.Down, time.Now())
+			`, recordID, serviceID, traffic.Tag, hourBucket, traffic.Up, traffic.Down, time.Now())
 			if err != nil {
 				return err
 			}
-			// 新增：有流量时更新 last_updated
 			_, err = tx.Exec(`UPDATE inbound_traffics SET last_updated = ? WHERE id = ?`, time.Now(), recordID)
 			if err != nil {
 				return err
@@ -362,19 +360,18 @@ func (d *Database) processClientTraffics(tx *sql.Tx, serviceID int, clientTraffi
 		} else if err != nil {
 			return err
 		}
-		// upsert 到历史表，写入 date 用 localtime
 		if traffic.Up > 0 || traffic.Down > 0 {
+			hourBucket := time.Now().In(time.Local).Format("2006-01-02 15:00:00")
 			_, err := tx.Exec(`
 				INSERT INTO client_traffic_history (client_traffic_id, service_id, email, date, daily_up, daily_down, created_at)
-				VALUES (?, ?, ?, DATE('now', 'localtime'), ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(client_traffic_id, date) DO UPDATE SET
 					daily_up = daily_up + excluded.daily_up,
 					daily_down = daily_down + excluded.daily_down
-			`, recordID, serviceID, traffic.Email, traffic.Up, traffic.Down, time.Now())
+			`, recordID, serviceID, traffic.Email, hourBucket, traffic.Up, traffic.Down, time.Now())
 			if err != nil {
 				return err
 			}
-			// 新增：有流量时更新 last_updated
 			_, err = tx.Exec(`UPDATE client_traffics SET last_updated = ? WHERE id = ?`, time.Now(), recordID)
 			if err != nil {
 				return err
@@ -421,6 +418,20 @@ func (d *Database) formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
+func buildHourSeries(start, end time.Time) []string {
+	if end.Before(start) {
+		start, end = end, start
+	}
+	series := make([]string, 0)
+	current := time.Date(start.Year(), start.Month(), start.Day(), start.Hour(), 0, 0, 0, start.Location())
+	endHour := time.Date(end.Year(), end.Month(), end.Day(), end.Hour(), 0, 0, 0, end.Location())
+	for !current.After(endHour) {
+		series = append(series, current.Format("2006-01-02 15:00:00"))
+		current = current.Add(time.Hour)
+	}
+	return series
+}
+
 // 获取服务汇总信息
 func (d *Database) GetServiceSummary() ([]map[string]interface{}, error) {
 	// 一次性查询所有统计信息，避免N+1问题
@@ -447,7 +458,7 @@ func (d *Database) GetServiceSummary() ([]map[string]interface{}, error) {
 			SELECT service_id, COUNT(id) as client_count FROM client_traffics WHERE status = 'active' GROUP BY service_id
 		) ct_counts ON s.id = ct_counts.service_id
 		LEFT JOIN (
-			SELECT service_id, SUM(daily_up) as today_up, SUM(daily_down) as today_down FROM inbound_traffic_history WHERE date = DATE('now', 'localtime') GROUP BY service_id
+			SELECT service_id, SUM(daily_up) as today_up, SUM(daily_down) as today_down FROM inbound_traffic_history WHERE date >= DATE('now', 'localtime') AND date < DATE('now', '+1 day', 'localtime') GROUP BY service_id
 		) today_traffic ON s.id = today_traffic.service_id
 		ORDER BY
 			s.last_seen DESC;
@@ -504,9 +515,10 @@ func (d *Database) GetServiceTraffic(serviceID int) (map[string]interface{}, err
 	// 批量查询所有入站端口的今日流量
 	inboundTrafficMap := make(map[int]struct{ Up, Down int64 })
 	inboundTrafficRows, err := d.db.Query(`
-		SELECT inbound_traffic_id, COALESCE(daily_up,0), COALESCE(daily_down,0)
+		SELECT inbound_traffic_id, SUM(COALESCE(daily_up,0)) AS up_total, SUM(COALESCE(daily_down,0)) AS down_total
 		FROM inbound_traffic_history
-		WHERE service_id = ? AND date = DATE('now', 'localtime')
+		WHERE service_id = ? AND date >= DATE('now', 'localtime') AND date < DATE('now', '+1 day', 'localtime')
+		GROUP BY inbound_traffic_id
 	`, serviceID)
 	if err == nil {
 		defer inboundTrafficRows.Close()
@@ -554,9 +566,10 @@ func (d *Database) GetServiceTraffic(serviceID int) (map[string]interface{}, err
 	// 批量查询所有客户端的今日流量
 	clientTrafficMap := make(map[int]struct{ Up, Down int64 })
 	clientTrafficRows, err := d.db.Query(`
-		SELECT client_traffic_id, COALESCE(daily_up,0), COALESCE(daily_down,0)
+		SELECT client_traffic_id, SUM(COALESCE(daily_up,0)) AS up_total, SUM(COALESCE(daily_down,0)) AS down_total
 		FROM client_traffic_history
-		WHERE service_id = ? AND date = DATE('now', 'localtime')
+		WHERE service_id = ? AND date >= DATE('now', 'localtime') AND date < DATE('now', '+1 day', 'localtime')
+		GROUP BY client_traffic_id
 	`, serviceID)
 	if err == nil {
 		defer clientTrafficRows.Close()

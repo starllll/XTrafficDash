@@ -336,6 +336,65 @@ func (api *DatabaseAPI) TriggerDailySummary(c *gin.Context) {
 	})
 }
 
+func getHistoryRangeFromRequest(c *gin.Context, defaultDays int) (time.Time, time.Time, error) {
+	startStr := c.Query("start_date")
+	endStr := c.Query("end_date")
+	if startStr == "" {
+		startStr = c.Query("start")
+	}
+	if endStr == "" {
+		endStr = c.Query("end")
+	}
+
+	if startStr != "" || endStr != "" {
+		var start, end time.Time
+		var err error
+		if startStr == "" {
+			start = time.Now().In(time.Local)
+			start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+		} else {
+			if len(startStr) == 10 {
+				start, err = time.ParseInLocation("2006-01-02", startStr, time.Local)
+			} else {
+				start, err = time.ParseInLocation("2006-01-02 15:04:05", startStr, time.Local)
+			}
+			if err != nil {
+				return time.Time{}, time.Time{}, err
+			}
+		}
+		if endStr == "" {
+			end = time.Now().In(time.Local)
+		} else {
+			if len(endStr) == 10 {
+				end, err = time.ParseInLocation("2006-01-02", endStr, time.Local)
+				end = time.Date(end.Year(), end.Month(), end.Day(), 23, 59, 59, 999999999, end.Location())
+			} else {
+				end, err = time.ParseInLocation("2006-01-02 15:04:05", endStr, time.Local)
+			}
+			if err != nil {
+				return time.Time{}, time.Time{}, err
+			}
+		}
+		if end.Before(start) {
+			start, end = end, start
+		}
+		return start, end, nil
+	}
+
+	if dStr := c.Query("days"); dStr != "" {
+		if d, err := strconv.Atoi(dStr); err == nil && d > 0 && d <= 365 {
+			defaultDays = d
+		}
+	}
+
+	end := time.Now().In(time.Local)
+	start := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, end.Location())
+	if defaultDays > 1 {
+		start = start.AddDate(0, 0, -(defaultDays - 1))
+	}
+	return start, end, nil
+}
+
 // 获取端口详细流量信息
 func (api *DatabaseAPI) GetPortDetail(c *gin.Context) {
 	serviceIDStr := c.Param("service_id")
@@ -358,7 +417,6 @@ func (api *DatabaseAPI) GetPortDetail(c *gin.Context) {
 		return
 	}
 
-	// 获取端口基本信息
 	var ip string
 	var customName sql.NullString
 	var port int
@@ -384,19 +442,25 @@ func (api *DatabaseAPI) GetPortDetail(c *gin.Context) {
 		return
 	}
 
-	// 查询今日流量
+	start, end, err := getHistoryRangeFromRequest(c, 1)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "日期参数错误: " + err.Error()})
+		return
+	}
+
 	var currentUp, currentDown int64
-	err = api.db.db.QueryRow(`SELECT COALESCE(daily_up,0), COALESCE(daily_down,0) FROM inbound_traffic_history WHERE service_id = ? AND tag = ? AND date = DATE('now', 'localtime')`, serviceID, tag).Scan(&currentUp, &currentDown)
+	err = api.db.db.QueryRow(`
+		SELECT COALESCE(SUM(daily_up),0), COALESCE(SUM(daily_down),0)
+		FROM inbound_traffic_history
+		WHERE service_id = ? AND tag = ? AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?)
+	`, serviceID, tag, start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05")).Scan(&currentUp, &currentDown)
 	if err != nil && err != sql.ErrNoRows {
 		currentUp, currentDown = 0, 0
 	}
 
-	// 计算历史累计流量
 	var totalUp, totalDown int64
 	historySumQuery := `
-		SELECT 
-			COALESCE(SUM(daily_up), 0) as total_up,
-			COALESCE(SUM(daily_down), 0) as total_down
+		SELECT COALESCE(SUM(daily_up), 0), COALESCE(SUM(daily_down), 0)
 		FROM inbound_traffic_history
 		WHERE service_id = ? AND tag = ?
 	`
@@ -406,15 +470,10 @@ func (api *DatabaseAPI) GetPortDetail(c *gin.Context) {
 		totalDown = currentDown
 	}
 
-	// 检查端口是否真正活跃（最近有流量）
 	isActive := false
 	if lastSeen != "" {
 		var lastSeenTime time.Time
-		timeFormats := []string{
-			"2006-01-02 15:04:05",
-			time.RFC3339,
-			"2006-01-02T15:04:05Z",
-		}
+		timeFormats := []string{"2006-01-02 15:04:05", time.RFC3339, "2006-01-02T15:04:05Z"}
 		for _, format := range timeFormats {
 			if t, err := time.Parse(format, lastSeen); err == nil {
 				lastSeenTime = t
@@ -428,77 +487,49 @@ func (api *DatabaseAPI) GetPortDetail(c *gin.Context) {
 	}
 
 	portInfo := map[string]interface{}{
-		"ip":           ip,
-		"tag":          tag,
-		"port":         port,
-		"total_up":     totalUp,
-		"total_down":   totalDown,
-		"current_up":   currentUp,
+		"ip":          ip,
+		"tag":         tag,
+		"port":        port,
+		"total_up":    totalUp,
+		"total_down":  totalDown,
+		"current_up":  currentUp,
 		"current_down": currentDown,
-		"last_seen":    lastSeen,
-		"is_active":    isActive,
-		"custom_name":  customName.String,
+		"last_seen":   lastSeen,
+		"is_active":   isActive,
+		"custom_name": customName.String,
 	}
 
-	// 获取days参数，默认7天
-	days := 7
-	if d := c.Query("days"); d != "" {
-		if v, err := strconv.Atoi(d); err == nil && v > 0 && v <= 30 {
-			days = v
-		}
-	}
-
-	// 构造最近days天的日期数组
-	dates := make([]string, days)
-	for i := 0; i < days; i++ {
-		date := time.Now().In(time.Local).AddDate(0, 0, -(days - 1 - i))
-		dateStr := date.Format("2006-01-02")
-		dates[i] = dateStr
-	}
-
-	// 查询历史流量，补全为0
-	historyQuery := `
-		SELECT date, daily_up, daily_down, daily_up + daily_down as total_daily
-		FROM inbound_traffic_history
-		WHERE service_id = ? AND tag = ? AND date >= DATE('now', ? || ' days', 'localtime') AND date <= DATE('now', 'localtime')
-	`
-	rows, err := api.db.db.Query(historyQuery, serviceID, tag, fmt.Sprintf("-%d", days-1))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error":   "查询历史数据失败: " + err.Error(),
-		})
-		return
-	}
-	defer rows.Close()
-
+	series := buildHourSeries(start, end)
 	historyMap := make(map[string]map[string]int64)
-	for rows.Next() {
-		var date string
-		var dailyUp, dailyDown, totalDaily int64
-		err := rows.Scan(&date, &dailyUp, &dailyDown, &totalDaily)
+	if len(series) > 0 {
+		historyQuery := `
+			SELECT strftime('%Y-%m-%d %H:00:00', date) AS bucket,
+				SUM(COALESCE(daily_up, 0)) AS up_sum,
+				SUM(COALESCE(daily_down, 0)) AS down_sum
+			FROM inbound_traffic_history
+			WHERE service_id = ? AND tag = ? AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?)
+			GROUP BY bucket
+			ORDER BY bucket
+		`
+		rows, err := api.db.db.Query(historyQuery, serviceID, tag, start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05"))
 		if err != nil {
-			continue
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "查询历史数据失败: " + err.Error()})
+			return
 		}
-		if len(date) > 10 {
-			date = date[:10]
-		}
-		historyMap[date] = map[string]int64{
-			"daily_up":    dailyUp,
-			"daily_down":  dailyDown,
-			"total_daily": totalDaily,
+		defer rows.Close()
+		for rows.Next() {
+			var bucket string
+			var upSum, downSum int64
+			if err := rows.Scan(&bucket, &upSum, &downSum); err == nil {
+				historyMap[bucket] = map[string]int64{"daily_up": upSum, "daily_down": downSum, "total_daily": upSum + downSum}
+			}
 		}
 	}
 
-	history := make([]map[string]interface{}, days)
-	for i, d := range dates {
-		item := map[string]interface{}{
-			"date":        d,
-			"daily_up":    int64(0),
-			"daily_down":  int64(0),
-			"total_daily": int64(0),
-		}
-		if v, ok := historyMap[d]; ok {
+	history := make([]map[string]interface{}, len(series))
+	for i, bucket := range series {
+		item := map[string]interface{}{"date": bucket, "daily_up": int64(0), "daily_down": int64(0), "total_daily": int64(0)}
+		if v, ok := historyMap[bucket]; ok {
 			item["daily_up"] = v["daily_up"]
 			item["daily_down"] = v["daily_down"]
 			item["total_daily"] = v["total_daily"]
@@ -506,16 +537,8 @@ func (api *DatabaseAPI) GetPortDetail(c *gin.Context) {
 		history[i] = item
 	}
 
-	result := gin.H{
-		"port_info": portInfo,
-		"history":   history,
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "获取端口详情成功",
-		"data":    result,
-	})
+	result := gin.H{"port_info": portInfo, "history": history}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "获取端口详情成功", "data": result})
 }
 
 // 获取用户详细流量信息
@@ -558,101 +581,78 @@ func (api *DatabaseAPI) GetUserDetail(c *gin.Context) {
 		})
 		return
 	}
-
-	// 查询今日流量
-	var currentUp, currentDown int64
 	serviceIDInt, _ := strconv.Atoi(serviceID)
-	err = api.db.db.QueryRow(`SELECT COALESCE(daily_up,0), COALESCE(daily_down,0) FROM client_traffic_history WHERE client_traffic_id = (SELECT id FROM client_traffics WHERE service_id = ? AND email = ?) AND date = DATE('now', 'localtime')`, serviceIDInt, email).Scan(&currentUp, &currentDown)
+	start, end, err := getHistoryRangeFromRequest(c, 1)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "日期参数错误: " + err.Error()})
+		return
+	}
+
+	var currentUp, currentDown int64
+	err = api.db.db.QueryRow(`
+		SELECT COALESCE(SUM(daily_up),0), COALESCE(SUM(daily_down),0)
+		FROM client_traffic_history
+		WHERE service_id = ? AND email = ? AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?)
+	`, serviceIDInt, email, start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05")).Scan(&currentUp, &currentDown)
 	if err != nil && err != sql.ErrNoRows {
 		currentUp, currentDown = 0, 0
 	}
 
-	// 计算用户历史累计流量
 	var totalUp, totalDown int64
 	userHistorySumQuery := `
-		SELECT 
-			COALESCE(SUM(daily_up), 0) as total_up,
-			COALESCE(SUM(daily_down), 0) as total_down
+		SELECT COALESCE(SUM(daily_up), 0), COALESCE(SUM(daily_down), 0)
 		FROM client_traffic_history
 		WHERE service_id = ? AND email = ?
 	`
-	err = api.db.db.QueryRow(userHistorySumQuery, serviceID, email).Scan(&totalUp, &totalDown)
+	err = api.db.db.QueryRow(userHistorySumQuery, serviceIDInt, email).Scan(&totalUp, &totalDown)
 	if err != nil {
 		totalUp = currentUp
 		totalDown = currentDown
 	}
 
 	userInfo := map[string]interface{}{
-		"ip":           ip,
-		"email":        userEmail,
-		"inbound_tag":  inboundTag,
-		"total_up":     totalUp,
-		"total_down":   totalDown,
-		"current_up":   currentUp,
+		"ip":          ip,
+		"email":       userEmail,
+		"inbound_tag": inboundTag,
+		"total_up":    totalUp,
+		"total_down":  totalDown,
+		"current_up":  currentUp,
 		"current_down": currentDown,
-		"last_seen":    lastSeen,
-		"custom_name":  customName.String,
+		"last_seen":   lastSeen,
+		"custom_name": customName.String,
 	}
 
-	// 获取days参数，默认7天
-	days := 7
-	if d := c.Query("days"); d != "" {
-		if v, err := strconv.Atoi(d); err == nil && v > 0 && v <= 30 {
-			days = v
-		}
-	}
-
-	// 构造最近days天的日期数组
-	dates := make([]string, days)
-	for i := 0; i < days; i++ {
-		date := time.Now().In(time.Local).AddDate(0, 0, -(days - 1 - i))
-		dateStr := date.Format("2006-01-02")
-		dates[i] = dateStr
-	}
-
-	// 查询历史流量，补全为0
-	historyQuery := `
-		SELECT date, daily_up, daily_down, daily_up + daily_down as total_daily
-		FROM client_traffic_history
-		WHERE service_id = ? AND email = ? AND date >= DATE('now', ? || ' days', 'localtime') AND date <= DATE('now', 'localtime')
-	`
-	rows, err := api.db.db.Query(historyQuery, serviceIDInt, email, fmt.Sprintf("-%d", days-1))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error":   "查询历史数据失败: " + err.Error(),
-		})
-		return
-	}
-	defer rows.Close()
-
+	series := buildHourSeries(start, end)
 	historyMap := make(map[string]map[string]int64)
-	for rows.Next() {
-		var date string
-		var dailyUp, dailyDown, totalDaily int64
-		err := rows.Scan(&date, &dailyUp, &dailyDown, &totalDaily)
+	if len(series) > 0 {
+		historyQuery := `
+			SELECT strftime('%Y-%m-%d %H:00:00', date) AS bucket,
+				SUM(COALESCE(daily_up, 0)) AS up_sum,
+				SUM(COALESCE(daily_down, 0)) AS down_sum
+			FROM client_traffic_history
+			WHERE service_id = ? AND email = ? AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?)
+			GROUP BY bucket
+			ORDER BY bucket
+		`
+		rows, err := api.db.db.Query(historyQuery, serviceIDInt, email, start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05"))
 		if err != nil {
-			continue
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "查询历史数据失败: " + err.Error()})
+			return
 		}
-		if len(date) > 10 {
-			date = date[:10]
-		}
-		historyMap[date] = map[string]int64{
-			"daily_up":    dailyUp,
-			"daily_down":  dailyDown,
-			"total_daily": totalDaily,
+		defer rows.Close()
+		for rows.Next() {
+			var bucket string
+			var upSum, downSum int64
+			if err := rows.Scan(&bucket, &upSum, &downSum); err == nil {
+				historyMap[bucket] = map[string]int64{"daily_up": upSum, "daily_down": downSum, "total_daily": upSum + downSum}
+			}
 		}
 	}
 
-	history := make([]map[string]interface{}, days)
-	for i, d := range dates {
-		item := map[string]interface{}{
-			"date":        d,
-			"daily_up":    int64(0),
-			"daily_down":  int64(0),
-			"total_daily": int64(0),
-		}
-		if v, ok := historyMap[d]; ok {
+	history := make([]map[string]interface{}, len(series))
+	for i, bucket := range series {
+		item := map[string]interface{}{"date": bucket, "daily_up": int64(0), "daily_down": int64(0), "total_daily": int64(0)}
+		if v, ok := historyMap[bucket]; ok {
 			item["daily_up"] = v["daily_up"]
 			item["daily_down"] = v["daily_down"]
 			item["total_daily"] = v["total_daily"]
@@ -660,16 +660,8 @@ func (api *DatabaseAPI) GetUserDetail(c *gin.Context) {
 		history[i] = item
 	}
 
-	result := gin.H{
-		"user_info": userInfo,
-		"history":   history,
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "获取用户详情成功",
-		"data":    result,
-	})
+	result := gin.H{"user_info": userInfo, "history": history}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "获取用户详情成功", "data": result})
 }
 
 // 通用：更新自定义名称

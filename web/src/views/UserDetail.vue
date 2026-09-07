@@ -58,23 +58,27 @@
       <div class="chart-section">
         <div class="chart-header">
           <div class="section-title">历史流量趋势</div>
-          <div class="chart-controls">
-            <button 
-              class="chart-btn" 
-              :class="{ active: chartPeriod === '7d' }"
-              @click="switchChartPeriod('7d')"
-            >
-              7天
-            </button>
-            <button 
-              class="chart-btn" 
-              :class="{ active: chartPeriod === '30d' }"
-              @click="switchChartPeriod('30d')"
-            >
-              30天
-            </button>
+          <div class="chart-controls range-controls">
+            <button class="chart-btn" :class="{ active: quickRange === 'today' }" @click="setQuickRange('today')">今日</button>
+            <button class="chart-btn" :class="{ active: quickRange === 'yesterday' }" @click="setQuickRange('yesterday')">昨日</button>
+            <button class="chart-btn" :class="{ active: quickRange === 'week' }" @click="setQuickRange('week')">本周</button>
+            <button class="chart-btn" :class="{ active: quickRange === 'month' }" @click="setQuickRange('month')">本月</button>
+            <button class="chart-btn" :class="{ active: quickRange === '30d' }" @click="setQuickRange('30d')">近30天</button>
           </div>
         </div>
+
+        <div class="date-range-toolbar">
+          <label>
+            开始
+            <input type="date" v-model="dateRange.startDate" />
+          </label>
+          <label>
+            结束
+            <input type="date" v-model="dateRange.endDate" />
+          </label>
+          <button class="apply-btn" @click="applyCustomRange">查询</button>
+        </div>
+
         <div class="chart-container">
           <canvas id="user-chart"></canvas>
         </div>
@@ -111,7 +115,7 @@
             </div>
           </div>
           <div v-for="item in paginatedHistory" :key="item.date" class="table-row">
-            <div class="table-cell date-col">{{ formatDate(item.date) }}</div>
+            <div class="table-cell date-col">{{ formatDateTime(item.date) }}</div>
             <div class="table-cell traffic-col upload">
               <span class="traffic-icon">↑</span>
               {{ formatBytes(item.daily_up) }}
@@ -178,7 +182,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServicesStore } from '../stores/services'
-import { formatBytes as rawFormatBytes, formatDate, formatSmartTime } from '../utils/formatters'
+import { formatBytes as rawFormatBytes, formatDate, formatDateTime, formatSmartTime } from '../utils/formatters'
 import { servicesAPI } from '../utils/api'
 import Chart from 'chart.js/auto'
 import EditNameModal from '../components/EditNameModal.vue'
@@ -191,7 +195,64 @@ const userDetail = ref(null)
 const currentHistoryPage = ref(1)
 const historyPageSize = 10
 let userChart = null
-const chartPeriod = ref('7d') // 图表周期：7d 或 30d
+const quickRange = ref('today')
+const dateRange = ref({ startDate: '', endDate: '' })
+
+const formatInputDate = (date) => {
+  const d = new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const setQuickRange = async (key) => {
+  const now = new Date()
+  const start = new Date(now)
+  const end = new Date(now)
+  quickRange.value = key
+
+  if (key === 'today') {
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (key === 'yesterday') {
+    start.setDate(start.getDate() - 1)
+    end.setDate(end.getDate() - 1)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (key === 'week') {
+    const day = start.getDay() || 7
+    start.setDate(start.getDate() - day + 1)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (key === 'month') {
+    start.setDate(1)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (key === '30d') {
+    start.setDate(start.getDate() - 29)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  }
+
+  dateRange.value = {
+    startDate: formatInputDate(start),
+    endDate: formatInputDate(end)
+  }
+
+  await loadUserDetail({ startDate: dateRange.value.startDate, endDate: dateRange.value.endDate })
+  await createUserChart()
+}
+
+const applyCustomRange = async () => {
+  if (!dateRange.value.startDate || !dateRange.value.endDate) {
+    alert('请选择开始和结束日期')
+    return
+  }
+  quickRange.value = 'custom'
+  await loadUserDetail({ startDate: dateRange.value.startDate, endDate: dateRange.value.endDate })
+  await createUserChart()
+}
 
 // 排序相关状态
 const sortField = ref('date')
@@ -203,15 +264,14 @@ const currentEditingValue = ref('')
 
 const selectedService = computed(() => servicesStore.selectedService)
 
-const loadUserDetail = async (days = 7) => {
+const loadUserDetail = async (range = { startDate: '', endDate: '' }) => {
   try {
     const serviceId = route.params.serviceId
     const email = route.params.email
-    const response = await servicesAPI.getUserDetail(serviceId, email, days)
+    const response = await servicesAPI.getUserDetail(serviceId, email, range)
     
     if (response.data.success) {
       userDetail.value = response.data.data
-      // 重置分页
       currentHistoryPage.value = 1
     }
   } catch (error) {
@@ -220,18 +280,7 @@ const loadUserDetail = async (days = 7) => {
 }
 
 const refreshUserDetail = async () => {
-  const days = chartPeriod.value === '7d' ? 7 : 30
-  await loadUserDetail(days)
-  await createUserChart()
-}
-
-// 切换图表周期
-const switchChartPeriod = async (period) => {
-  if (chartPeriod.value === period) return
-  
-  chartPeriod.value = period
-  const days = period === '7d' ? 7 : 30
-  await loadUserDetail(days)
+  await loadUserDetail({ startDate: dateRange.value.startDate || '', endDate: dateRange.value.endDate || '' })
   await createUserChart()
 }
 
@@ -253,8 +302,8 @@ const createUserChart = async () => {
     }
 
     // 准备数据
-    const history = [...userDetail.value.history] // 不再reverse，保持API顺序
-    const labels = history.map(item => formatDate(item.date))
+    const history = [...userDetail.value.history]
+    const labels = history.map(item => formatDateTime(item.date))
     const uploadData = history.map(item => item.daily_up)
     const downloadData = history.map(item => item.daily_down)
 
@@ -483,7 +532,14 @@ const closeModal = () => {
 
 // 页面挂载时默认加载7天
 onMounted(async () => {
-  await loadUserDetail(7)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  dateRange.value = {
+    startDate: formatInputDate(today),
+    endDate: formatInputDate(today)
+  }
+  quickRange.value = 'today'
+  await loadUserDetail({ startDate: dateRange.value.startDate, endDate: dateRange.value.endDate })
   await createUserChart()
 })
 
@@ -762,7 +818,47 @@ function formatBytes(num) {
 
 .chart-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.range-controls {
+  justify-content: flex-end;
+}
+
+.date-range-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 16px 0 20px;
+}
+
+.date-range-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.date-range-toolbar input {
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid #dfe6ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #2c3e50;
+}
+
+.apply-btn {
+  padding: 9px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #70A1FF;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .chart-btn {
