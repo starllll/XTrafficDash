@@ -110,7 +110,7 @@
             </div>
           </div>
           <div v-for="item in paginatedHistory" :key="item.date" class="table-row">
-            <div class="table-cell date-col">{{ formatDateTime(item.date) }}</div>
+            <div class="table-cell date-col">{{ portDetail.granularity === 'day' ? formatDate(item.date) : formatDateTime(item.date) }}</div>
             <div class="table-cell traffic-col upload">
               <span class="traffic-icon">↑</span>
               {{ formatBytes(item.daily_up) }}
@@ -387,6 +387,10 @@ const createPortChart = async () => {
                 weight: 'bold'
               }
             }
+          },
+          interaction: {
+            mode: 'index',
+            intersect: false
           },
           tooltip: {
             callbacks: {

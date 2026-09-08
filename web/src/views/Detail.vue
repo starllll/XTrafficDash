@@ -403,6 +403,10 @@ const createDetailChart = async (range = {}) => {
                   }
                 }
               },
+              interaction: {
+                mode: 'index',
+                intersect: false
+              },
               tooltip: {
                 callbacks: {
                   label: function(context) {
