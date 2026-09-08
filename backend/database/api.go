@@ -440,7 +440,14 @@ func getHistoryRangeFromRequest(c *gin.Context, defaultDays int) (time.Time, tim
 		} else {
 			if len(endStr) == 10 {
 				end, err = time.ParseInLocation("2006-01-02", endStr, time.Local)
-				end = time.Date(end.Year(), end.Month(), end.Day(), 23, 59, 59, 999999999, end.Location())
+				if err == nil {
+					now := time.Now().In(time.Local)
+					if end.Format("2006-01-02") == now.Format("2006-01-02") {
+						end = now
+					} else {
+						end = time.Date(end.Year(), end.Month(), end.Day(), 23, 59, 59, 999999999, end.Location())
+					}
+				}
 			} else {
 				end, err = time.ParseInLocation("2006-01-02 15:04:05", endStr, time.Local)
 			}

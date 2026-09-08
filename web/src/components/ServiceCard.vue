@@ -150,7 +150,9 @@ const createChart = () => {
             data: props.trafficData.upload_data,
             borderColor: '#74b9ff',
             backgroundColor: 'rgba(116, 185, 255, 0.1)',
-            tension: 0.4,
+            tension: 0,
+            pointRadius: 2,
+            pointHoverRadius: 4,
             fill: true
           },
           {
@@ -158,7 +160,9 @@ const createChart = () => {
             data: props.trafficData.download_data,
             borderColor: '#00b894',
             backgroundColor: 'rgba(0, 184, 148, 0.1)',
-            tension: 0.4,
+            tension: 0,
+            pointRadius: 2,
+            pointHoverRadius: 4,
             fill: true
           }
         ]
@@ -169,6 +173,13 @@ const createChart = () => {
         plugins: {
           legend: {
             display: false
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return context.dataset.label + ': ' + formatBytes(context.parsed.y)
+              }
+            }
           }
         },
         scales: {
@@ -191,16 +202,8 @@ const createChart = () => {
               font: {
                 size: 10
               },
-              callback: function(value, index, values) {
-                if (value >= 1024 * 1024 * 1024) {
-                  return (value / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
-                } else if (value >= 1024 * 1024) {
-                  return (value / (1024 * 1024)).toFixed(1) + ' MB';
-                } else if (value >= 1024) {
-                  return (value / 1024).toFixed(1) + ' KB';
-                } else {
-                  return value + ' B';
-                }
+              callback: function(value) {
+                return formatBytes(value)
               }
             },
             grid: {

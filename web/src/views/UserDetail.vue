@@ -320,7 +320,9 @@ const createUserChart = async () => {
             data: uploadData,
             borderColor: '#74b9ff',
             backgroundColor: 'rgba(116, 185, 255, 0.1)',
-            tension: 0.4,
+            tension: 0,
+            pointRadius: 2,
+            pointHoverRadius: 4,
             fill: true
           },
           {
@@ -328,7 +330,9 @@ const createUserChart = async () => {
             data: downloadData,
             borderColor: '#00b894',
             backgroundColor: 'rgba(0, 184, 148, 0.1)',
-            tension: 0.4,
+            tension: 0,
+            pointRadius: 2,
+            pointHoverRadius: 4,
             fill: true
           }
         ]

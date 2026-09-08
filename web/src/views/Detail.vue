@@ -371,7 +371,9 @@ const createDetailChart = async (range = {}) => {
                 data: data.upload_data,
                 borderColor: '#74b9ff',
                 backgroundColor: 'rgba(116, 185, 255, 0.1)',
-                tension: 0.4,
+                tension: 0,
+                pointRadius: 2,
+                pointHoverRadius: 4,
                 fill: true
               },
               {
@@ -379,7 +381,9 @@ const createDetailChart = async (range = {}) => {
                 data: data.download_data,
                 borderColor: '#00b894',
                 backgroundColor: 'rgba(0, 184, 148, 0.1)',
-                tension: 0.4,
+                tension: 0,
+                pointRadius: 2,
+                pointHoverRadius: 4,
                 fill: true
               }
             ]
@@ -396,6 +400,13 @@ const createDetailChart = async (range = {}) => {
                   font: {
                     size: 14,
                     weight: 'bold'
+                  }
+                }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + formatBytes(context.parsed.y)
                   }
                 }
               }
@@ -438,16 +449,8 @@ const createDetailChart = async (range = {}) => {
                   font: {
                     size: 12
                   },
-                  callback: function(value, index, values) {
-                    if (value >= 1024 * 1024 * 1024) {
-                      return (value / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
-                    } else if (value >= 1024 * 1024) {
-                      return (value / (1024 * 1024)).toFixed(1) + ' MB';
-                    } else if (value >= 1024) {
-                      return (value / 1024).toFixed(1) + ' KB';
-                    } else {
-                      return value + ' B';
-                    }
+                  callback: function(value) {
+                    return formatBytes(value)
                   }
                 },
                 grid: {
