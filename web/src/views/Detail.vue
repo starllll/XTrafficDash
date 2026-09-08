@@ -371,7 +371,7 @@ const createDetailChart = async (range = {}) => {
                 data: data.upload_data,
                 borderColor: '#74b9ff',
                 backgroundColor: 'rgba(116, 185, 255, 0.1)',
-                tension: 0,
+                tension: 0.4,
                 pointRadius: 2,
                 pointHoverRadius: 4,
                 fill: true
@@ -381,7 +381,7 @@ const createDetailChart = async (range = {}) => {
                 data: data.download_data,
                 borderColor: '#00b894',
                 backgroundColor: 'rgba(0, 184, 148, 0.1)',
-                tension: 0,
+                tension: 0.4,
                 pointRadius: 2,
                 pointHoverRadius: 4,
                 fill: true
@@ -540,6 +540,10 @@ const sortedClients = computed(() => {
 
 onMounted(async () => {
   const serviceId = parseInt(route.params.serviceId)
+
+  const today = new Date()
+  const todayValue = formatInputDate(today)
+  dateRange.value = { startDate: todayValue, endDate: todayValue }
   
   // 如果没有选中的服务，从主页获取
   if (!selectedService.value || selectedService.value.id !== serviceId) {
@@ -554,7 +558,7 @@ onMounted(async () => {
   // 加载服务详情
   if (selectedService.value) {
     await servicesStore.loadServiceDetail(serviceId)
-    await createDetailChart()
+    await createDetailChart(dateRange.value)
     startAutoRefresh()
   }
 })
@@ -710,6 +714,13 @@ onUnmounted(() => {
 .chart-container {
   height: 400px;
   position: relative;
+  overflow-x: auto;
+}
+
+@media (max-width: 600px) {
+  .chart-container canvas {
+    min-width: 720px !important;
+  }
 }
 
 .refresh-button {

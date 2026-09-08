@@ -356,7 +356,7 @@ const createPortChart = async () => {
             data: uploadData,
             borderColor: '#74b9ff',
             backgroundColor: 'rgba(116, 185, 255, 0.1)',
-            tension: 0,
+            tension: 0.4,
             pointRadius: 2,
             pointHoverRadius: 4,
             fill: true
@@ -366,7 +366,7 @@ const createPortChart = async () => {
             data: downloadData,
             borderColor: '#00b894',
             backgroundColor: 'rgba(0, 184, 148, 0.1)',
-            tension: 0,
+            tension: 0.4,
             pointRadius: 2,
             pointHoverRadius: 4,
             fill: true
@@ -616,7 +616,7 @@ onUnmounted(() => {
 .history-table {
   background: white;
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   margin-bottom: 16px;
   border: 1px solid #e9ecef;
@@ -891,6 +891,22 @@ onUnmounted(() => {
 .chart-container {
   height: 400px;
   position: relative;
+  overflow-x: auto;
+}
+
+@media (max-width: 600px) {
+  .chart-container canvas {
+    min-width: 720px !important;
+  }
+
+  .history-table {
+    overflow-x: auto;
+  }
+
+  .history-table .table-header,
+  .history-table .table-row {
+    min-width: 600px;
+  }
 }
 
 /* 下载按钮样式 */
