@@ -303,7 +303,9 @@ const createUserChart = async () => {
 
     // 准备数据
     const history = [...userDetail.value.history]
-    const labels = history.map(item => formatDateTime(item.date))
+    const labels = history.map(item => userDetail.value.granularity === 'day'
+      ? formatDate(item.date)
+      : formatDateTime(item.date))
     const uploadData = history.map(item => item.daily_up)
     const downloadData = history.map(item => item.daily_down)
 

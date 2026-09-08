@@ -487,30 +487,34 @@ func (api *DatabaseAPI) GetPortDetail(c *gin.Context) {
 	}
 
 	portInfo := map[string]interface{}{
-		"ip":          ip,
-		"tag":         tag,
-		"port":        port,
-		"total_up":    totalUp,
-		"total_down":  totalDown,
-		"current_up":  currentUp,
+		"ip":           ip,
+		"tag":          tag,
+		"port":         port,
+		"total_up":     totalUp,
+		"total_down":   totalDown,
+		"current_up":   currentUp,
 		"current_down": currentDown,
-		"last_seen":   lastSeen,
-		"is_active":   isActive,
-		"custom_name": customName.String,
+		"last_seen":    lastSeen,
+		"is_active":    isActive,
+		"custom_name":  customName.String,
 	}
 
-	series := buildHourSeries(start, end)
+	series, hourly := buildTrafficSeries(start, end)
 	historyMap := make(map[string]map[string]int64)
 	if len(series) > 0 {
-		historyQuery := `
-			SELECT strftime('%Y-%m-%d %H:00:00', date) AS bucket,
+		bucketExpression := "strftime('%Y-%m-%d', date)"
+		if hourly {
+			bucketExpression = "strftime('%Y-%m-%d %H:00:00', date)"
+		}
+		historyQuery := fmt.Sprintf(`
+			SELECT %s AS bucket,
 				SUM(COALESCE(daily_up, 0)) AS up_sum,
 				SUM(COALESCE(daily_down, 0)) AS down_sum
 			FROM inbound_traffic_history
 			WHERE service_id = ? AND tag = ? AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?)
 			GROUP BY bucket
 			ORDER BY bucket
-		`
+		`, bucketExpression)
 		rows, err := api.db.db.Query(historyQuery, serviceID, tag, start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05"))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "查询历史数据失败: " + err.Error()})
@@ -537,7 +541,11 @@ func (api *DatabaseAPI) GetPortDetail(c *gin.Context) {
 		history[i] = item
 	}
 
-	result := gin.H{"port_info": portInfo, "history": history}
+	granularity := "day"
+	if hourly {
+		granularity = "hour"
+	}
+	result := gin.H{"port_info": portInfo, "history": history, "granularity": granularity}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "获取端口详情成功", "data": result})
 }
 
@@ -611,29 +619,33 @@ func (api *DatabaseAPI) GetUserDetail(c *gin.Context) {
 	}
 
 	userInfo := map[string]interface{}{
-		"ip":          ip,
-		"email":       userEmail,
-		"inbound_tag": inboundTag,
-		"total_up":    totalUp,
-		"total_down":  totalDown,
-		"current_up":  currentUp,
+		"ip":           ip,
+		"email":        userEmail,
+		"inbound_tag":  inboundTag,
+		"total_up":     totalUp,
+		"total_down":   totalDown,
+		"current_up":   currentUp,
 		"current_down": currentDown,
-		"last_seen":   lastSeen,
-		"custom_name": customName.String,
+		"last_seen":    lastSeen,
+		"custom_name":  customName.String,
 	}
 
-	series := buildHourSeries(start, end)
+	series, hourly := buildTrafficSeries(start, end)
 	historyMap := make(map[string]map[string]int64)
 	if len(series) > 0 {
-		historyQuery := `
-			SELECT strftime('%Y-%m-%d %H:00:00', date) AS bucket,
+		bucketExpression := "strftime('%Y-%m-%d', date)"
+		if hourly {
+			bucketExpression = "strftime('%Y-%m-%d %H:00:00', date)"
+		}
+		historyQuery := fmt.Sprintf(`
+			SELECT %s AS bucket,
 				SUM(COALESCE(daily_up, 0)) AS up_sum,
 				SUM(COALESCE(daily_down, 0)) AS down_sum
 			FROM client_traffic_history
 			WHERE service_id = ? AND email = ? AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?)
 			GROUP BY bucket
 			ORDER BY bucket
-		`
+		`, bucketExpression)
 		rows, err := api.db.db.Query(historyQuery, serviceIDInt, email, start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05"))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "查询历史数据失败: " + err.Error()})
@@ -660,7 +672,11 @@ func (api *DatabaseAPI) GetUserDetail(c *gin.Context) {
 		history[i] = item
 	}
 
-	result := gin.H{"user_info": userInfo, "history": history}
+	granularity := "day"
+	if hourly {
+		granularity = "hour"
+	}
+	result := gin.H{"user_info": userInfo, "history": history, "granularity": granularity}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "获取用户详情成功", "data": result})
 }
 

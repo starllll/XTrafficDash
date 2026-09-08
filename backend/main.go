@@ -112,10 +112,9 @@ func init() {
 	var err error
 	db, err = database.OpenDatabase(config.DatabasePath)
 	if err != nil {
-		logger.Errorf("初始化数据库失败: %v", err)
-	} else {
-		logger.Info("数据库初始化成功")
+		logger.Fatalf("初始化数据库失败: %v", err)
 	}
+	logger.Info("数据库初始化成功")
 
 	// 初始化hy2配置表
 	if db != nil {
@@ -175,10 +174,8 @@ func setupRoutes(r *gin.Engine) {
 	r.POST("/api/traffic", handleTraffic)
 
 	// 注册数据库API路由（需要认证）
-	if db != nil {
-		dbAPI := database.NewDatabaseAPI(db)
-		dbAPI.RegisterRoutes(r)
-	}
+	dbAPI := database.NewDatabaseAPI(db)
+	dbAPI.RegisterRoutes(r)
 
 	// 静态文件服务（用于前端）
 	// 尝试多个可能的路径

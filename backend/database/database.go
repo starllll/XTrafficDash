@@ -432,6 +432,28 @@ func buildHourSeries(start, end time.Time) []string {
 	return series
 }
 
+func buildDaySeries(start, end time.Time) []string {
+	if end.Before(start) {
+		start, end = end, start
+	}
+	series := make([]string, 0)
+	current := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+	endDay := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, end.Location())
+	for !current.After(endDay) {
+		series = append(series, current.Format("2006-01-02"))
+		current = current.AddDate(0, 0, 1)
+	}
+	return series
+}
+
+func buildTrafficSeries(start, end time.Time) ([]string, bool) {
+	hourly := start.In(time.Local).Format("2006-01-02") == end.In(time.Local).Format("2006-01-02")
+	if hourly {
+		return buildHourSeries(start, end), true
+	}
+	return buildDaySeries(start, end), false
+}
+
 // 获取服务汇总信息
 func (d *Database) GetServiceSummary() ([]map[string]interface{}, error) {
 	// 一次性查询所有统计信息，避免N+1问题
@@ -647,7 +669,7 @@ func (d *Database) DeleteService(serviceID int) error {
 	_, err = tx.Exec("DELETE FROM client_traffic_history WHERE service_id = ?", serviceID)
 	if err != nil {
 		return fmt.Errorf("删除客户端流量历史记录失败: %v", err)
-	}	
+	}
 
 	// 删除客户端流量记录
 	_, err = tx.Exec("DELETE FROM client_traffics WHERE service_id = ?", serviceID)
