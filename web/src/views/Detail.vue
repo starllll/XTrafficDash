@@ -30,21 +30,23 @@
         <div class="chart-header">
           <div class="section-title">历史流量趋势</div>
           <div class="chart-controls">
-            <button 
-              class="chart-btn" 
-              :class="{ active: chartPeriod === '7d' }"
-              @click="switchChartPeriod('7d')"
-            >
-              7天
-            </button>
-            <button 
-              class="chart-btn" 
-              :class="{ active: chartPeriod === '30d' }"
-              @click="switchChartPeriod('30d')"
-            >
-              30天
-            </button>
+            <button class="chart-btn" :class="{ active: quickRange === 'today' }" @click="setQuickRange('today')">今日</button>
+            <button class="chart-btn" :class="{ active: quickRange === 'yesterday' }" @click="setQuickRange('yesterday')">昨日</button>
+            <button class="chart-btn" :class="{ active: quickRange === 'week' }" @click="setQuickRange('week')">本周</button>
+            <button class="chart-btn" :class="{ active: quickRange === 'month' }" @click="setQuickRange('month')">本月</button>
+            <button class="chart-btn" :class="{ active: quickRange === '30d' }" @click="setQuickRange('30d')">近30天</button>
           </div>
+        </div>
+        <div class="date-range-toolbar">
+          <label>
+            开始
+            <input type="date" v-model="dateRange.startDate" />
+          </label>
+          <label>
+            结束
+            <input type="date" v-model="dateRange.endDate" />
+          </label>
+          <button class="apply-btn" @click="applyCustomRange">查询</button>
         </div>
         <div class="chart-container">
           <canvas id="detail-chart"></canvas>
@@ -172,7 +174,7 @@
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServicesStore } from '../stores/services'
-import { formatBytes as rawFormatBytes } from '../utils/formatters'
+import { formatBytes as rawFormatBytes, formatDate, formatDateTime } from '../utils/formatters'
 import { servicesAPI } from '../utils/api'
 import Chart from 'chart.js/auto'
 import EditNameModal from '../components/EditNameModal.vue'
@@ -186,7 +188,57 @@ const selectedService = computed(() => servicesStore.selectedService)
 let detailChart = null
 let refreshInterval = null
 const isRefreshing = ref(false)
-const chartPeriod = ref('7d') // 图表周期：7d 或 30d
+const quickRange = ref('today')
+const dateRange = ref({ startDate: '', endDate: '' })
+
+const formatInputDate = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const setQuickRange = async (key) => {
+  const now = new Date()
+  const start = new Date(now)
+  const end = new Date(now)
+  quickRange.value = key
+
+  if (key === 'today') {
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (key === 'yesterday') {
+    start.setDate(start.getDate() - 1)
+    end.setDate(end.getDate() - 1)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (key === 'week') {
+    const day = start.getDay() || 7
+    start.setDate(start.getDate() - day + 1)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (key === 'month') {
+    start.setDate(1)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  } else if (key === '30d') {
+    start.setDate(start.getDate() - 29)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+  }
+
+  dateRange.value = { startDate: formatInputDate(start), endDate: formatInputDate(end) }
+  await createDetailChart({ startDate: dateRange.value.startDate, endDate: dateRange.value.endDate })
+}
+
+const applyCustomRange = async () => {
+  if (!dateRange.value.startDate || !dateRange.value.endDate) {
+    alert('请选择开始和结束日期')
+    return
+  }
+  quickRange.value = 'custom'
+  await createDetailChart(dateRange.value)
+}
 
 // 弹窗相关状态
 const showServiceModal = ref(false)
@@ -296,20 +348,9 @@ const closeServiceModal = () => {
   showServiceModal.value = false
 }
 
-// 切换图表周期
-const switchChartPeriod = async (period) => {
-  if (chartPeriod.value === period) return
-  
-  chartPeriod.value = period
-  await createDetailChart()
-}
-
-const createDetailChart = async () => {
+const createDetailChart = async (range = {}) => {
   try {
-    // 根据周期选择API
-    const response = chartPeriod.value === '7d' 
-      ? await servicesAPI.getWeeklyTraffic(selectedService.value.id)
-      : await servicesAPI.getMonthlyTraffic(selectedService.value.id)
+    const response = await servicesAPI.getServiceTrafficHistory(selectedService.value.id, range)
     if (response.data.success) {
       const data = response.data.data
       const ctx = document.getElementById('detail-chart')
@@ -323,7 +364,7 @@ const createDetailChart = async () => {
         detailChart = new Chart(ctx, {
           type: 'line',
           data: {
-            labels: data.dates,
+            labels: data.dates.map(date => data.granularity === 'day' ? formatDate(date) : formatDateTime(date)),
             datasets: [
               {
                 label: '上传',
@@ -364,7 +405,7 @@ const createDetailChart = async () => {
                 display: true,
                 title: {
                   display: true,
-                  text: '日期',
+                  text: data.granularity === 'day' ? '日期' : '时间',
                   color: '#2c3e50',
                   font: {
                     size: 14,
@@ -428,7 +469,7 @@ const refreshDetail = async () => {
     isRefreshing.value = true
     try {
       await servicesStore.loadServiceDetail(selectedService.value.id)
-      await createDetailChart()
+      await createDetailChart(dateRange.value)
     } catch (error) {
       console.error('刷新数据失败:', error)
     } finally {
@@ -446,7 +487,7 @@ const startAutoRefresh = () => {
   refreshInterval = setInterval(async () => {
     if (selectedService.value) {
       await servicesStore.loadServiceDetail(selectedService.value.id)
-      await createDetailChart()
+      await createDetailChart(dateRange.value)
     }
   }, 60000)
 }
@@ -524,6 +565,41 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.date-range-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 16px 0 20px;
+}
+
+.date-range-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.date-range-toolbar input {
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid #dfe6ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #2c3e50;
+}
+
+.apply-btn {
+  padding: 9px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #70A1FF;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .table-label-container {
   display: flex;
   align-items: center;

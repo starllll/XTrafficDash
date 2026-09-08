@@ -53,6 +53,10 @@ export const servicesAPI = {
   
   // 获取服务详情
   getServiceDetail: (serviceId) => api.get(`/db/services/${serviceId}/traffic`),
+  getServiceTrafficHistory: (serviceId, range = {}) => {
+    const query = buildRangeQuery(range)
+    return api.get(`/db/traffic/history/${serviceId}${query ? `?${query}` : ''}`)
+  },
   
   // 删除服务
   deleteService: (serviceId) => api.delete(`/db/services/${serviceId}`),

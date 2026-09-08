@@ -35,6 +35,7 @@ func (api *DatabaseAPI) RegisterRoutes(r *gin.Engine) {
 
 		// 流量统计
 		dbGroup.GET("/traffic/history", api.GetTrafficHistory)
+		dbGroup.GET("/traffic/history/:service_id", api.GetServiceTrafficHistory)
 		dbGroup.GET("/traffic/weekly/:service_id", api.GetWeeklyTraffic)
 		dbGroup.GET("/traffic/monthly/:service_id", api.GetMonthlyTraffic)
 
@@ -220,6 +221,76 @@ func (api *DatabaseAPI) GetTrafficHistory(c *gin.Context) {
 	})
 }
 
+// 获取服务历史流量趋势，单日按小时，多日按天聚合
+func (api *DatabaseAPI) GetServiceTrafficHistory(c *gin.Context) {
+	serviceID, err := strconv.Atoi(c.Param("service_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "无效的服务ID"})
+		return
+	}
+
+	start, end, err := getHistoryRangeFromRequest(c, 1)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "日期参数错误: " + err.Error()})
+		return
+	}
+
+	series, hourly := buildTrafficSeries(start, end)
+	bucketExpression := "strftime('%Y-%m-%d', date)"
+	if hourly {
+		bucketExpression = "strftime('%Y-%m-%d %H:00:00', date)"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT %s AS bucket,
+			COALESCE(SUM(daily_up), 0),
+			COALESCE(SUM(daily_down), 0)
+		FROM inbound_traffic_history
+		WHERE service_id = ? AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?)
+		GROUP BY bucket
+		ORDER BY bucket
+	`, bucketExpression)
+	rows, err := api.db.db.Query(query, serviceID, start.Format("2006-01-02 15:04:05"), end.Format("2006-01-02 15:04:05"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "查询服务历史流量失败: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	traffic := make(map[string][2]int64)
+	for rows.Next() {
+		var bucket string
+		var upload, download int64
+		if err := rows.Scan(&bucket, &upload, &download); err == nil {
+			traffic[bucket] = [2]int64{upload, download}
+		}
+	}
+
+	uploadData := make([]int64, len(series))
+	downloadData := make([]int64, len(series))
+	for index, bucket := range series {
+		if values, ok := traffic[bucket]; ok {
+			uploadData[index] = values[0]
+			downloadData[index] = values[1]
+		}
+	}
+
+	granularity := "day"
+	if hourly {
+		granularity = "hour"
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "获取服务历史流量成功",
+		"data": gin.H{
+			"dates":         series,
+			"upload_data":   uploadData,
+			"download_data": downloadData,
+			"granularity":   granularity,
+		},
+	})
+}
+
 // 通用：获取服务N天流量数据
 func (api *DatabaseAPI) GetTrafficByDays(c *gin.Context, days int) {
 	serviceIDStr := c.Param("service_id")
@@ -247,12 +318,14 @@ func (api *DatabaseAPI) GetTrafficByDays(c *gin.Context, days int) {
 
 	historyQuery := `
 		SELECT 
-			ith.date,
+			DATE(ith.date) AS date,
 			SUM(ith.daily_up) as total_up,
 			SUM(ith.daily_down) as total_down
 		FROM inbound_traffic_history ith
-		WHERE ith.service_id = ? AND ith.date >= DATE('now', ? || ' days', 'localtime') AND ith.date <= DATE('now', 'localtime')
-		GROUP BY ith.date
+		WHERE ith.service_id = ?
+			AND datetime(ith.date) >= datetime(DATE('now', ? || ' days', 'localtime'))
+			AND datetime(ith.date) < datetime(DATE('now', '+1 day', 'localtime'))
+		GROUP BY DATE(ith.date)
 		ORDER BY ith.date
 	`
 	// 组装参数
