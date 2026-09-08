@@ -714,13 +714,6 @@ onUnmounted(() => {
 .chart-container {
   height: 400px;
   position: relative;
-  overflow-x: auto;
-}
-
-@media (max-width: 600px) {
-  .chart-container canvas {
-    min-width: 720px !important;
-  }
 }
 
 .refresh-button {

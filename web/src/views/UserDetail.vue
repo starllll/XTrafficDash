@@ -625,7 +625,7 @@ function formatBytes(num) {
 .history-table {
   background: white;
   border-radius: 8px;
-  overflow-x: auto;
+  overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   margin-bottom: 16px;
   border: 1px solid #e9ecef;
@@ -899,14 +899,9 @@ function formatBytes(num) {
 .chart-container {
   height: 400px;
   position: relative;
-  overflow-x: auto;
 }
 
 @media (max-width: 600px) {
-  .chart-container canvas {
-    min-width: 720px !important;
-  }
-
   .history-table {
     overflow-x: auto;
   }
