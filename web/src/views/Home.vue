@@ -24,6 +24,7 @@
         :key="service.id"
         :service="service"
         :trafficData="trafficDataMap[service.id]"
+        :monthlyTrafficData="monthlyTrafficDataMap[service.id]"
         @select="handleSelectService"
         @delete="handleDeleteService"
       />
@@ -60,6 +61,7 @@ const authStore = useAuthStore()
 const showDeleteModal = ref(false)
 const serviceToDelete = ref(null)
 const trafficDataMap = ref({})
+const monthlyTrafficDataMap = ref({})
 
 const handleSelectService = (service) => {
   servicesStore.selectService(service)
@@ -97,14 +99,22 @@ const goHy2Setting = () => {
 }
 
 const loadAllTrafficData = async () => {
-  const map = {}
+  const weeklyMap = {}
+  const monthlyMap = {}
   for (const service of servicesStore.services) {
-    const res = await servicesAPI.getMonthlyTraffic(service.id)
-    if (res.data.success) {
-      map[service.id] = res.data.data
+    const [weeklyResponse, monthlyResponse] = await Promise.all([
+      servicesAPI.getWeeklyTraffic(service.id),
+      servicesAPI.getMonthlyTraffic(service.id)
+    ])
+    if (weeklyResponse.data.success) {
+      weeklyMap[service.id] = weeklyResponse.data.data
+    }
+    if (monthlyResponse.data.success) {
+      monthlyMap[service.id] = monthlyResponse.data.data
     }
   }
-  trafficDataMap.value = map
+  trafficDataMap.value = weeklyMap
+  monthlyTrafficDataMap.value = monthlyMap
 }
 
 // 排序后的服务列表

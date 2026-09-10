@@ -41,11 +41,11 @@
         <div class="stat-label">今日下载</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value">{{ formatBytes(trafficData?.upload_data?.reduce((total, value) => total + value, 0) || 0) }}</div>
+        <div class="stat-value">{{ formatBytes(monthlyTrafficData?.upload_data?.reduce((total, value) => total + value, 0) || 0) }}</div>
         <div class="stat-label">30日上传</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value">{{ formatBytes(trafficData?.download_data?.reduce((total, value) => total + value, 0) || 0) }}</div>
+        <div class="stat-value">{{ formatBytes(monthlyTrafficData?.download_data?.reduce((total, value) => total + value, 0) || 0) }}</div>
         <div class="stat-label">30日下载</div>
       </div>
     </div>
@@ -82,6 +82,10 @@ const props = defineProps({
     required: true
   },
   trafficData: {
+    type: Object,
+    required: false
+  },
+  monthlyTrafficData: {
     type: Object,
     required: false
   }

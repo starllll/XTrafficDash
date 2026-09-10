@@ -33,15 +33,15 @@
           </div>
           <div class="info-item">
             <div class="info-label">历史上传</div>
-            <div class="info-value">{{ formatBytes(selectedService.total_up) }}</div>
+            <div class="info-value">{{ formatBytes(selectedService.service?.total_up || 0) }}</div>
           </div>
           <div class="info-item">
             <div class="info-label">历史下载</div>
-            <div class="info-value">{{ formatBytes(selectedService.total_down) }}</div>
+            <div class="info-value">{{ formatBytes(selectedService.service?.total_down || 0) }}</div>
           </div>
           <div class="info-item">
             <div class="info-label">最后活跃</div>
-            <div class="info-value">{{ formatSmartTime(selectedService.last_seen) }}</div>
+            <div class="info-value">{{ formatSmartTime(selectedService.service?.last_seen || selectedService.last_seen) }}</div>
           </div>
         </div>
       </div>

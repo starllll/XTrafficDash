@@ -52,8 +52,6 @@ type Service struct {
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
 	Status    string    `json:"status"`
-	TotalUp   int64     `json:"total_up"`
-	TotalDown int64     `json:"total_down"`
 }
 
 // 入站流量记录结构体
@@ -537,10 +535,11 @@ func (d *Database) GetServiceTraffic(serviceID int) (map[string]interface{}, err
 	service.IPAddress = rawIPAddress
 
 	// 获取服务所有入站历史流量总量
+	var totalUp, totalDown int64
 	err = d.db.QueryRow(`
 		SELECT COALESCE(SUM(daily_up), 0), COALESCE(SUM(daily_down), 0)
 		FROM inbound_traffic_history WHERE service_id = ?
-	`, serviceID).Scan(&service.TotalUp, &service.TotalDown)
+	`, serviceID).Scan(&totalUp, &totalDown)
 	if err != nil {
 		return nil, err
 	}
@@ -646,8 +645,18 @@ func (d *Database) GetServiceTraffic(serviceID int) (map[string]interface{}, err
 		clientTraffics = append(clientTraffics, record)
 	}
 
+	serviceInfo := map[string]interface{}{
+		"id":          service.ID,
+		"ip_address":  service.IPAddress,
+		"custom_name": customName.String,
+		"first_seen":  service.FirstSeen,
+		"last_seen":   service.LastSeen,
+		"status":      service.Status,
+		"total_up":    totalUp,
+		"total_down":  totalDown,
+	}
 	result := map[string]interface{}{
-		"service":          service,
+		"service":          serviceInfo,
 		"inbound_traffics": inboundTraffics,
 		"client_traffics":  clientTraffics,
 	}
