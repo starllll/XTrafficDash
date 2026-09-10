@@ -99,7 +99,7 @@ const goHy2Setting = () => {
 const loadAllTrafficData = async () => {
   const map = {}
   for (const service of servicesStore.services) {
-    const res = await servicesAPI.getWeeklyTraffic(service.id)
+    const res = await servicesAPI.getMonthlyTraffic(service.id)
     if (res.data.success) {
       map[service.id] = res.data.data
     }

@@ -52,6 +52,8 @@ type Service struct {
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
 	Status    string    `json:"status"`
+	TotalUp   int64     `json:"total_up"`
+	TotalDown int64     `json:"total_down"`
 }
 
 // 入站流量记录结构体
@@ -533,6 +535,15 @@ func (d *Database) GetServiceTraffic(serviceID int) (map[string]interface{}, err
 		return nil, err
 	}
 	service.IPAddress = rawIPAddress
+
+	// 获取服务所有入站历史流量总量
+	err = d.db.QueryRow(`
+		SELECT COALESCE(SUM(daily_up), 0), COALESCE(SUM(daily_down), 0)
+		FROM inbound_traffic_history WHERE service_id = ?
+	`, serviceID).Scan(&service.TotalUp, &service.TotalDown)
+	if err != nil {
+		return nil, err
+	}
 
 	// 批量查询所有入站端口的今日流量
 	inboundTrafficMap := make(map[int]struct{ Up, Down int64 })

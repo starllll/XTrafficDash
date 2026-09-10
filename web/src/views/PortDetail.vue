@@ -388,10 +388,6 @@ const createPortChart = async () => {
               }
             }
           },
-          interaction: {
-            mode: 'index',
-            intersect: false
-          },
           tooltip: {
             callbacks: {
               label: function(context) {
@@ -399,6 +395,10 @@ const createPortChart = async () => {
               }
             }
           }
+        },
+        interaction: {
+          mode: 'index',
+          intersect: false
         },
         scales: {
           x: {

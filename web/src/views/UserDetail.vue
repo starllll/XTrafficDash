@@ -352,10 +352,6 @@ const createUserChart = async () => {
               }
             }
           },
-          interaction: {
-            mode: 'index',
-            intersect: false
-          },
           tooltip: {
             callbacks: {
               label: function(context) {
@@ -363,6 +359,10 @@ const createUserChart = async () => {
               }
             }
           }
+        },
+        interaction: {
+          mode: 'index',
+          intersect: false
         },
         scales: {
           x: {

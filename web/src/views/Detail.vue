@@ -25,6 +25,27 @@
         </button>
       </div>
 
+      <div class="service-info">
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">服务IP</div>
+            <div class="info-value">{{ selectedService.ip || selectedService.ip_address }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">历史上传</div>
+            <div class="info-value">{{ formatBytes(selectedService.total_up) }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">历史下载</div>
+            <div class="info-value">{{ formatBytes(selectedService.total_down) }}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">最后活跃</div>
+            <div class="info-value">{{ formatSmartTime(selectedService.last_seen) }}</div>
+          </div>
+        </div>
+      </div>
+
 
       <div class="chart-section">
         <div class="chart-header">
@@ -174,7 +195,7 @@
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServicesStore } from '../stores/services'
-import { formatBytes as rawFormatBytes, formatDate, formatDateTime } from '../utils/formatters'
+import { formatBytes as rawFormatBytes, formatDate, formatDateTime, formatSmartTime } from '../utils/formatters'
 import { servicesAPI } from '../utils/api'
 import Chart from 'chart.js/auto'
 import EditNameModal from '../components/EditNameModal.vue'
@@ -403,10 +424,6 @@ const createDetailChart = async (range = {}) => {
                   }
                 }
               },
-              interaction: {
-                mode: 'index',
-                intersect: false
-              },
               tooltip: {
                 callbacks: {
                   label: function(context) {
@@ -414,6 +431,10 @@ const createDetailChart = async (range = {}) => {
                   }
                 }
               }
+            },
+            interaction: {
+              mode: 'index',
+              intersect: false
             },
             scales: {
               x: {
@@ -576,6 +597,37 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.service-info {
+  margin-bottom: 25px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.info-item {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 3px solid #70A1FF;
+  box-shadow: 0 2px 8px rgba(112,161,255,0.10);
+}
+
+.info-label {
+  font-size: 0.85rem;
+  color: #6c757d;
+  margin-bottom: 4px;
+}
+
+.info-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #495057;
+  word-break: break-word;
+}
+
 .date-range-toolbar {
   display: flex;
   flex-wrap: wrap;
