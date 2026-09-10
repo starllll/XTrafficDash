@@ -299,6 +299,9 @@ const createUserChart = async () => {
       : formatDateTime(item.date))
     const uploadData = history.map(item => item.daily_up)
     const downloadData = history.map(item => item.daily_down)
+    const uploadTotal = uploadData.reduce((total, value) => total + value, 0)
+    const downloadTotal = downloadData.reduce((total, value) => total + value, 0)
+    const axisLabel = userDetail.value.granularity === 'day' ? '日期' : '时间'
 
     // 创建新图表
     userChart = new Chart(ctx, {
@@ -360,7 +363,10 @@ const createUserChart = async () => {
             display: true,
             title: {
               display: true,
-              text: '日期',
+              text: [
+                axisLabel,
+                `↑ ${formatBytes(uploadTotal)} | ↓ ${formatBytes(downloadTotal)} 合计：${formatBytes(uploadTotal + downloadTotal)}`
+              ],
               color: '#2c3e50',
               font: {
                 size: 14,

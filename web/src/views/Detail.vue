@@ -375,6 +375,9 @@ const createDetailChart = async (range = {}) => {
     if (response.data.success) {
       const data = response.data.data
       const ctx = document.getElementById('detail-chart')
+      const uploadTotal = data.upload_data.reduce((total, value) => total + value, 0)
+      const downloadTotal = data.download_data.reduce((total, value) => total + value, 0)
+      const axisLabel = data.granularity === 'day' ? '日期' : '时间'
       
       if (ctx) {
         // 销毁现有图表
@@ -441,7 +444,10 @@ const createDetailChart = async (range = {}) => {
                 display: true,
                 title: {
                   display: true,
-                  text: data.granularity === 'day' ? '日期' : '时间',
+                  text: [
+                    axisLabel,
+                    `↑ ${formatBytes(uploadTotal)} | ↓ ${formatBytes(downloadTotal)} 合计：${formatBytes(uploadTotal + downloadTotal)}`
+                  ],
                   color: '#2c3e50',
                   font: {
                     size: 14,
