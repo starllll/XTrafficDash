@@ -32,15 +32,6 @@
             <div class="info-value">{{ userDetail.user_info.ip }}</div>
           </div>
           <div class="info-item">
-            <div class="info-label">所属端口</div>
-            <div 
-              class="info-value clickable" 
-              @click="viewPortDetail(selectedService.id, userDetail.user_info.inbound_tag)"
-            >
-              {{ userDetail.user_info.inbound_tag }}
-            </div>
-          </div>
-          <div class="info-item">
             <div class="info-label">历史上传</div>
             <div class="info-value">{{ formatBytes(userDetail.user_info.total_up) }}</div>
           </div>

@@ -31,10 +31,6 @@
             <div class="info-value">{{ portDetail.port_info.ip }}</div>
           </div>
           <div class="info-item">
-            <div class="info-label">端口号</div>
-            <div class="info-value">{{ portDetail.port_info.port }}</div>
-          </div>
-          <div class="info-item">
             <div class="info-label">历史上传</div>
             <div class="info-value">{{ formatBytes(portDetail.port_info.total_up) }}</div>
           </div>
